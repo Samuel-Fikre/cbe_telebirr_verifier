@@ -40,10 +40,28 @@ func main() {
 
     if verifier.VerifyAll([]string{"date", "payer_name"}) {
         fmt.Println("✅ Payment verified!")
+        fmt.Printf("Amount: %.2f Birr\n", fields["settled_amount"])
+        fmt.Printf("From: %s (%s)\n", fields["payer_name"], fields["payer_phone"])
+        fmt.Printf("To: %s (%s)\n", fields["credited_party_name"], fields["credited_party_acc_no"])
+        fmt.Printf("Date: %s\n", fields["date"])
+        fmt.Printf("Receipt number: %s\n", fields["receiptNo"])
+        fmt.Printf("Payment reason: %s\n", fields["payment_reason"])
+    } else {
+        fmt.Println("❌ Payment verification failed!")
     }
 }
 ```
 
+Example output:
+```
+✅ Payment verified!
+Amount: 85.00 Birr
+From: John Doe (251912345678)
+To: Your Business (251987654321)
+Date: 29-01-2025 15:13:43
+Receipt number: CATExample
+Payment reason: Buy Package Mini APP
+```
 
 ## Available Fields
 
