@@ -1,6 +1,6 @@
-module github.com/cbe_telebirr_verifier
+module github.com/Samuel-Fikre/telebirr_verifier
 
-go 1.21
+go 1.23.1
 
 require (
 	golang.org/x/net v0.22.0
