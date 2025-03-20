@@ -22,7 +22,17 @@ func (r *Receipt) Equals(a, b interface{}) bool {
 			return v1 == v2
 		}
 	case float64:
-		if v2, ok := b.(float64); ok {
+		switch v2 := b.(type) {
+		case float64:
+			return v1 == v2
+		case int:
+			return v1 == float64(v2)
+		}
+	case int:
+		switch v2 := b.(type) {
+		case float64:
+			return float64(v1) == v2
+		case int:
 			return v1 == v2
 		}
 	}
@@ -40,11 +50,11 @@ func (r *Receipt) VerifyAll(doNotCompare []string) bool {
 		return false
 	}
 
-	for key, parsedValue := range r.ParsedFields {
+	for key, preDefinedValue := range r.PreDefinedFields {
 		if contains(doNotCompare, key) {
 			continue
 		}
-		if preDefinedValue, exists := r.PreDefinedFields[key]; !exists || !r.Equals(parsedValue, preDefinedValue) {
+		if parsedValue, exists := r.ParsedFields[key]; !exists || !r.Equals(parsedValue, preDefinedValue) {
 			return false
 		}
 	}

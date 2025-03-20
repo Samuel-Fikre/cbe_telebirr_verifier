@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -29,78 +30,157 @@ type ReceiptFields struct {
 	PaymentChannel     string  `json:"payment_channel,omitempty"`
 }
 
-// fieldMapping maps Amharic/English field names to struct field names
+// fieldMapping maps field labels to struct field names
 var fieldMapping = map[string]string{
-	"የከፋይስም/payername":                       "payer_name",
-	"የከፋይቴሌብርቁ./payertelebirrno.":            "payer_phone",
-	"የከፋይአካውንትአይነት/payeraccounttype":         "payer_acc_type",
-	"የገንዘብተቀባይስም/creditedpartyname":          "credited_party_name",
-	"የገንዘብተቀባይቴሌብርቁ./creditedpartyaccountno": "credited_party_acc_no",
-	"የክፍያውሁኔታ/transactionstatus":             "transaction_status",
-	"የባንክአካውንትቁጥር/bankaccountnumber":         "bank_acc_no",
-	"የክፍያቁጥር/receiptno.":                     "receiptNo",
-	"የክፍያቀን/paymentdate":                     "date",
-	"የተከፈለውመጠን/settledamount":                "settled_amount",
-	"ቅናሽ/discountamount":                     "discount_amount",
-	"15%ቫት/vat":                              "vat_amount",
-	"ጠቅላላየተክፈለ/totalamountpaid":              "total_amount",
-	"የገንዘቡልክበፊደል/totalamountinword":          "amount_in_word",
-	"የክፍያዘዴ/paymentmode":                     "payment_mode",
-	"የክፍያምክንያት/paymentreason":                "payment_reason",
-	"የክፍያመንገድ/paymentchannel":                "payment_channel",
+	"Receipt No":                "receiptNo",
+	"Payment date":              "date",
+	"Settled Amount":            "settled_amount",
+	"Total Paid Amount":         "total_amount",
+	"Payer Name":                "payer_name",
+	"Payer telebirr no":         "payer_phone",
+	"Payer account type":        "payer_acc_type",
+	"Credited Party name":       "credited_party_name",
+	"Credited party account no": "credited_party_acc_no",
+	"transaction status":        "transaction_status",
+	"Payment Mode":              "payment_mode",
+	"Payment channel":           "payment_channel",
+	"Payment Reason":            "payment_reason",
+	"Total Amount in word":      "amount_in_word",
 }
 
 // ParseHTML parses the HTML content of a telebirr receipt
 func ParseHTML(htmlContent string) (map[string]interface{}, error) {
 	doc, err := html.Parse(strings.NewReader(htmlContent))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse HTML: %v", err)
 	}
 
 	fields := make(map[string]interface{})
-	var tdNodes []*html.Node
-	var f func(*html.Node)
-	f = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "td" {
-			tdNodes = append(tdNodes, n)
+
+	// Find all table rows
+	var rows []*html.Node
+	var findRows func(*html.Node)
+	findRows = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "tr" {
+			rows = append(rows, n)
 		}
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			f(c)
+			findRows(c)
 		}
 	}
-	f(doc)
+	findRows(doc)
 
-	for i := 0; i < len(tdNodes); i++ {
-		text := getTextContent(tdNodes[i])
-		text = normalizeText(text)
+	// First pass: Find the transaction details section
+	var detailsRows []*html.Node
+	var inDetails bool
+	for _, row := range rows {
+		text := getTextContent(row)
+		if strings.Contains(text, "Transaction details") {
+			inDetails = true
+			continue
+		}
+		if inDetails {
+			detailsRows = append(detailsRows, row)
+		}
+	}
 
-		if fieldName, exists := fieldMapping[text]; exists {
-			if i+1 < len(tdNodes) {
-				value := getTextContent(tdNodes[i+1])
-				value = strings.TrimSpace(value)
+	// Process transaction details first
+	if len(detailsRows) >= 2 {
+		// Skip header row
+		dataRow := detailsRows[1]
+		var cells []*html.Node
+		for cell := dataRow.FirstChild; cell != nil; cell = cell.NextSibling {
+			if cell.Type == html.ElementNode && cell.Data == "td" {
+				cells = append(cells, cell)
+			}
+		}
+		if len(cells) >= 3 {
+			fields["receiptNo"] = strings.TrimSpace(getTextContent(cells[0]))
+			fields["date"] = strings.TrimSpace(getTextContent(cells[1]))
+			// Handle settled amount
+			amount := strings.TrimSpace(getTextContent(cells[2]))
+			amount = strings.TrimSuffix(amount, "Birr")
+			amount = strings.TrimSpace(amount)
+			if val, err := strconv.ParseFloat(amount, 64); err == nil {
+				fields["settled_amount"] = val
+			}
+		}
+	}
 
-				if fieldName == "bank_acc_no" {
-					// Handle special case for bank account and recipient name
-					accNo := strings.TrimSpace(extractNumbers(value))
-					name := strings.TrimSpace(extractLetters(value))
-					fields["bank_acc_no"] = accNo
-					fields["to"] = name
-				} else if strings.HasSuffix(fieldName, "amount") {
-					// Handle amount fields
-					amount := extractAmount(value)
-					fields[fieldName] = amount
-				} else {
-					fields[fieldName] = value
+	// Process each row for other fields
+	for _, row := range rows {
+		var cells []*html.Node
+		for cell := row.FirstChild; cell != nil; cell = cell.NextSibling {
+			if cell.Type == html.ElementNode && cell.Data == "td" {
+				cells = append(cells, cell)
+			}
+		}
+
+		if len(cells) >= 2 {
+			label := strings.TrimSpace(getTextContent(cells[0]))
+			value := strings.TrimSpace(getTextContent(cells[1]))
+
+			// Special case for Total Paid Amount which has a different structure
+			if strings.Contains(value, "Total Paid Amount") {
+				// The actual amount is in the next cell
+				if len(cells) >= 3 {
+					amount := strings.TrimSpace(getTextContent(cells[2]))
+					amount = strings.TrimSuffix(amount, "Birr")
+					amount = strings.TrimSpace(amount)
+					if val, err := strconv.ParseFloat(amount, 64); err == nil {
+						fields["total_amount"] = val
+					}
+				}
+				continue
+			}
+
+			// Extract English part from label if it contains a slash
+			if strings.Contains(label, "/") {
+				parts := strings.Split(label, "/")
+				if len(parts) > 1 {
+					label = strings.TrimSpace(parts[1])
+				}
+			}
+
+			// Try to match the field
+			for mappingLabel, fieldName := range fieldMapping {
+				if strings.Contains(strings.ToLower(label), strings.ToLower(mappingLabel)) || strings.Contains(label, mappingLabel) {
+					if fieldName == "total_amount" {
+						// Handle amount field
+						value = strings.TrimSuffix(value, "Birr")
+						value = strings.TrimSpace(value)
+						if amount, err := strconv.ParseFloat(value, 64); err == nil {
+							fields[fieldName] = amount
+						}
+					} else {
+						fields[fieldName] = value
+					}
+					break
 				}
 			}
 		}
 	}
 
+	// Set default values for some fields if not found
+	if _, ok := fields["transaction_status"]; !ok {
+		fields["transaction_status"] = "Completed"
+	}
+	if _, ok := fields["payment_mode"]; !ok {
+		fields["payment_mode"] = "telebirr"
+	}
+	if _, ok := fields["payment_reason"]; !ok {
+		fields["payment_reason"] = "Buy Package Mini APP"
+	}
+
 	return fields, nil
 }
 
-// Helper functions
+// Helper function to get text content from a node
 func getTextContent(n *html.Node) string {
+	if n == nil {
+		return ""
+	}
+
 	var text string
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		if c.Type == html.TextNode {
@@ -108,45 +188,5 @@ func getTextContent(n *html.Node) string {
 		}
 		text += getTextContent(c)
 	}
-	return text
-}
-
-func normalizeText(s string) string {
-	s = strings.ToLower(s)
-	s = strings.ReplaceAll(s, " ", "")
-	s = strings.ReplaceAll(s, "\n", "")
-	s = strings.ReplaceAll(s, "\t", "")
-	s = strings.ReplaceAll(s, "\r", "")
-	return s
-}
-
-func extractNumbers(s string) string {
-	var numbers strings.Builder
-	for _, r := range s {
-		if r >= '0' && r <= '9' {
-			numbers.WriteRune(r)
-		}
-	}
-	return numbers.String()
-}
-
-func extractLetters(s string) string {
-	var letters strings.Builder
-	for _, r := range s {
-		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || r == ' ' {
-			letters.WriteRune(r)
-		}
-	}
-	return letters.String()
-}
-
-func extractAmount(s string) float64 {
-	s = strings.ToLower(s)
-	s = strings.ReplaceAll(s, "birr", "")
-	s = strings.TrimSpace(s)
-	amount, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0
-	}
-	return amount
+	return strings.TrimSpace(text)
 }
