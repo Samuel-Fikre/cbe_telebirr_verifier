@@ -5,7 +5,7 @@ Go library for verifying Telebirr payment receipts.
 ## Install
 
 ```bash
-go get github.com/telebirr_verifier
+go get github.com/Samuel-Fikre/telebirr_verifier
 ```
 
 ## Usage
@@ -15,9 +15,9 @@ package main
 
 import (
     "fmt"
-    "github.com/telebirr_verifier/pkg/loader"
-    "github.com/telebirr_verifier/pkg/parser"
-    "github.com/telebirr_verifier/pkg/receipt"
+    "github.com/Samuel-Fikre/telebirr_verifier/pkg/loader"
+    "github.com/Samuel-Fikre/telebirr_verifier/pkg/parser"
+    "github.com/Samuel-Fikre/telebirr_verifier/pkg/receipt"
 )
 
 func main() {
