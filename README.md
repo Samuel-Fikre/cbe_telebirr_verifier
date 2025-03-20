@@ -5,7 +5,11 @@ Go library for verifying Telebirr payment receipts.
 ## Install
 
 ```bash
-go get github.com/Samuel-Fikre/telebirr_verifier
+# Latest version
+go get github.com/Samuel-Fikre/telebirr_verifier@latest
+
+# Or specific version
+go get github.com/Samuel-Fikre/telebirr_verifier@v0.1.0
 ```
 
 ## Usage
